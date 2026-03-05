@@ -14,24 +14,25 @@ load_dotenv()
 
 # --- LOGIC ---
 def get_translator(style_choice):
-    """
-    Constructs a Few-Shot Prompt Template based on user selection.
-    """
     examples = CORPORATE_EXAMPLES if style_choice == "Corporate Speak" else GENZ_EXAMPLES
-    prefix = "You are a translator. Convert the user's input into corporate jargon." if style_choice == "Corporate Speak" else "You are a translator. Convert the user's input into Gen-Z slang."
+    # We add a very strict instruction here
+    prefix = (
+        f"You are a professional linguistic style-transfer engine. "
+        f"Translate the user's input into {style_choice}. "
+        f"Respond ONLY with the translation. Do not include any introductory text."
+    )
     
-    # 1. Define how each example should look
     example_prompt = PromptTemplate(
         input_variables=["input", "output"],
         template="Input: {input}\nTranslation: {output}"
     )
     
-    # 2. Assemble the Few-Shot Prompt
     prompt = FewShotPromptTemplate(
         examples=examples,
         example_prompt=example_prompt,
         prefix=prefix + "\n\nExamples:",
-        suffix="Input: {text}\nTranslation:",
+        # The suffix now explicitly demands the Input/Translation format
+        suffix="\nInput: {text}\nTranslation:", 
         input_variables=["text"]
     )
     
@@ -39,16 +40,20 @@ def get_translator(style_choice):
 
 def translate_text(text, style):
     llm = ChatGroq(
-        model="llama3-8b-8192", 
-        temperature=0.5,
+        model="llama-3.1-8b-instant", 
+        temperature=0.0, # Keeps it strictly to the pattern 
         api_key=os.getenv("GROQ_API_KEY")
     )
     
     prompt_template = get_translator(style)
-    # Format the prompt with the user's input
     final_prompt = prompt_template.format(text=text)
     
-    return llm.invoke(final_prompt).content
+    # Get the raw translation from the model
+    response = llm.invoke(final_prompt).content.strip()
+    
+    # Return as a list or a string with clear newlines
+    return f"**Input:** {text}  \n**Output:** {response}"
+
 
 # --- UI ---
 st.set_page_config(page_title="Few-Shot Translator", layout="centered")
@@ -68,7 +73,8 @@ if st.button("Translate Style"):
     if text_input:
         with st.spinner("Applying style transfer..."):
             result = translate_text(text_input, style)
-            st.success(result)
+            # Use markdown to respect the line breaks and bolding
+            st.info(result) 
             
             # Show the "Why" (Resume value)
             with st.expander("See how the prompt was built"):
